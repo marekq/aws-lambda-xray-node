@@ -1,17 +1,18 @@
 // import xray sdk and log context missing errors
 const AWSXRay = require('aws-xray-sdk-core');
+AWSXRay.capturePromise();
 AWSXRay.setContextMissingStrategy("LOG_ERROR");
 
 // instrument the https and aws sdk libraries with xray, import axios
 AWSXRay.captureHTTPsGlobal(require('https'));
 const https = require('https');
 const axios = require("axios");
+const prettyms = require("pretty-ms");
 
 // connect to the ddb table
 AWSXRay.captureAWS(require('aws-sdk'));
 const AWS = require('aws-sdk');
 const ddbclient = new AWS.DynamoDB.DocumentClient();
-AWSXRay.capturePromise();
 
 // set url, ddb table and default status code
 let ddbtable = process.env.ddbtable;
@@ -30,16 +31,14 @@ const getURL = async url => {
     }
 };
 
-function ddbstore(httpsresp) {
-  // get current timestamp
-  var now = new Date();
-  var timestamp = now.getTime();
+function ddbstore(httpsresp, uptime, currenttime) {
 
   // construct dynamodb item with lambda execution details
   var params = {
     TableName: ddbtable,
     Item:{
-        "timest": timestamp,
+        "timest": currenttime,
+        "uptime": uptime, 
         "rawdata": httpsresp,
         "ip": httpsresp.ip,
         "hostname": httpsresp.hostname,
@@ -67,15 +66,26 @@ function ddbstore(httpsresp) {
 exports.handler = async (event, context) => {
 
     // retrieve https content
-    const httpsresp = await getURL(url);
-    ddbstore(httpsresp);
+    var httpsresp = await getURL(url);
+    
+    // get current now timestamp
+    var now = new Date();
+    var currenttime = now.getTime();
 
-    // construct response with status code
+    // get node process lifetime to measure host uptime
+    var up = process.uptime();
+    var uptime = prettyms(up * 1000, {compact: true});
+
+    // write record to dynamodb
+    ddbstore(httpsresp, uptime, currenttime);
+
+    // construct response with status code and uptime
     const response = {
         statusCode: statusCode,
-        body: JSON.stringify(httpsresp)
+        body: httpsresp,
+        uptime: uptime
     };
 
-    // return content
-    context.succeed(response);
+    // return JSON in indented format
+    context.succeed(JSON.stringify(response, null, 2));
 };

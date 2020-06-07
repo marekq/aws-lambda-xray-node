@@ -22,8 +22,8 @@ Resources:
       Runtime: nodejs12.x
       CodeUri: function/.
       Description: Retrieve Lambda external IP address from ipinfo.io
-      MemorySize: 256
-      Timeout: 3
+      MemorySize: 128
+      Timeout: 5
       Policies:
         - AWSLambdaBasicExecutionRole
         - AWSLambdaReadOnlyAccess
