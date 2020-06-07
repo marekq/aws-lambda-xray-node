@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: A demo app to show how AWS X-Ray instrumentation works with Node.JS 12 with HTTP and AWS SDK calls. The stack creates an API GW, Node.JS Lambda to handle requests, a Lambda Layer containing X-Ray and other libraries and a DynamoDB table to store results.
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: aws-lambda-xray-node
+    Description: A demo app to show how AWS X-Ray instrumentation works with Node.JS 12 with HTTP and AWS SDK calls.
+    Author: Marek Kuczynski
+    SpdxLicenseId: Apache-2.0
+    ReadmeUrl: README.md
+    Labels: ['xray', 'lambda', 'node.js', 'serverless', 'api gateway']
+    HomePageUrl: https://github.com/marekq/aws-lambda-xray-node
+    SemanticVersion: 1.0.0
+    SourceCodeUrl: https://github.com/marekq/aws-lambda-xray-node
+
+Resources:
+  LambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs12.x
+      CodeUri: function/.
+      Description: Retrieve Lambda external IP address from ipinfo.io
+      MemorySize: 256
+      Timeout: 3
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
+      Tracing: Active
+      Layers: 
+        - !Ref XrayLayer
+      Events:
+        GetAPI:
+          Type: HttpApi
+          Properties:
+            Path: '/'
+            Method: get
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DDBTable
+      Environment:
+        Variables:
+          ddbtable: !Ref DDBTable
+
+  XrayLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: node12-aws-xray
+      Description: create aws xray layer
+      ContentUri: layer/.
+      CompatibleRuntimes:
+        - nodejs12.x
+      LicenseInfo: MIT
+      RetentionPolicy: retain
+    Metadata:
+      BuildMethod: nodejs12.x
+
+  DDBTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: timest
+        Type: Number
+
+Outputs:
+  API:
+    Value: { "Fn::Sub" : "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/"}
