@@ -77,7 +77,7 @@ exports.handler = async (event, context) => {
     var currenttime = now.getTime();
 
     // get node process lifetime to measure host uptime
-    var up = process.uptime().toFixed(0);
+    var up = Number(process.uptime().toFixed(0));
     var uptime = prettyms(up * 1000, {compact: true});
 
     // write record to dynamodb
