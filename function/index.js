@@ -7,6 +7,8 @@ AWSXRay.setContextMissingStrategy("LOG_ERROR");
 AWSXRay.captureHTTPsGlobal(require('https'));
 const https = require('https');
 const axios = require("axios");
+
+// import pretty-ms for timestamp printing
 const prettyms = require("pretty-ms");
 
 // connect to the ddb table
@@ -14,7 +16,7 @@ AWSXRay.captureAWS(require('aws-sdk'));
 const AWS = require('aws-sdk');
 const ddbclient = new AWS.DynamoDB.DocumentClient();
 
-// set url, ddb table and default status code
+// set url, ddb table variables and default status code
 let ddbtable = process.env.ddbtable;
 const url = "https://ipinfo.io/json";
 let statusCode = '200';
@@ -31,14 +33,16 @@ const getURL = async url => {
     }
 };
 
-function ddbstore(httpsresp, uptime, currenttime) {
+// store the record in dynamodb
+function ddbstore(httpsresp, uptimestr, currenttime, uptimeseconds) {
 
   // construct dynamodb item with lambda execution details
   var params = {
     TableName: ddbtable,
     Item:{
         "timest": currenttime,
-        "uptime": uptime, 
+        "lambdauptimesec": uptimeseconds,
+        "lambdauptimestr": uptimestr, 
         "rawdata": httpsresp,
         "ip": httpsresp.ip,
         "hostname": httpsresp.hostname,
@@ -49,20 +53,20 @@ function ddbstore(httpsresp, uptime, currenttime) {
     }
   }
 
-  // log parameters
-  console.log(params);
-
   // put the item into dynamodb, print an error if needed
   ddbclient.put(params, function(err, data) {
     if (err) {
-        console.error("Unable to add item. Error JSON:", JSON.stringify(err));
+        console.error("unable to add item. error json:", JSON.stringify(err));
     } else {
-        console.log("Added item:", JSON.stringify(params));
+
+        // log parameters
+        console.log(params);
+        console.log("record added item to dynamodb");
     }
   });
 };
 
-// main handler
+// main lambda handler
 exports.handler = async (event, context) => {
 
     // retrieve https content
@@ -73,17 +77,18 @@ exports.handler = async (event, context) => {
     var currenttime = now.getTime();
 
     // get node process lifetime to measure host uptime
-    var up = process.uptime();
+    var up = process.uptime().toFixed(0);
     var uptime = prettyms(up * 1000, {compact: true});
 
     // write record to dynamodb
-    ddbstore(httpsresp, uptime, currenttime);
+    ddbstore(httpsresp, uptime, currenttime, up);
 
     // construct response with status code and uptime
     const response = {
         statusCode: statusCode,
         body: httpsresp,
-        uptime: uptime
+        uptimestring: uptime,
+        uptimeseconds: up 
     };
 
     // return JSON in indented format

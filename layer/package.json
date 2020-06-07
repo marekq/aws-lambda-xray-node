@@ -6,7 +6,6 @@
     "aws-sdk": "2.691.0"
   },
   "dependencies": {
-    "aws-xray-sdk": "^3.0.1",
     "aws-xray-sdk-core": "3.0.1",
     "axios": "^0.19.2",
     "pretty-ms": "^7.0.0"
