@@ -43,6 +43,7 @@ Resources:
       Environment:
         Variables:
           ddbtable: !Ref DDBTable
+          AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
 
   XrayLayer:
     Type: AWS::Serverless::LayerVersion
