@@ -35,7 +35,7 @@ Resources:
         GetAPI:
           Type: HttpApi
           Properties:
-            Path: '/'
+            Path: '/{proxy+}'
             Method: get
       Policies:
         - DynamoDBCrudPolicy:

@@ -18,15 +18,19 @@ const ddbclient = new AWS.DynamoDB.DocumentClient();
 
 // set url, ddb table variables and default status code
 let ddbtable = process.env.ddbtable;
-const url = "https://ipinfo.io/json";
+let ipres = '';
+let httpreq;
+
+const httpurl = "https://ipinfo.io/json";
 let statusCode = '200';
 
 // retrieve the retrieved content and http status code, print error if needed
-const getURL = async url => {
+const getURL = async httpurl => {
     try {
-        const response = await axios.get(url);
+        const response = await axios.get(httpurl);
         statusCode = response.status;
         return response.data;
+
     } catch (error) {
         statusCode = error.response.status;
         return error;
@@ -34,7 +38,7 @@ const getURL = async url => {
 };
 
 // store the record in dynamodb
-function ddbstore(httpsresp, uptimestr, currenttime, uptimeseconds) {
+function ddbstore(httpreq, uptimestr, currenttime, uptimeseconds, reqpath) {
 
   // construct dynamodb item with lambda execution details
   var params = {
@@ -43,10 +47,11 @@ function ddbstore(httpsresp, uptimestr, currenttime, uptimeseconds) {
         "timest": currenttime,
         "lambdauptimesec": uptimeseconds,
         "lambdauptimestr": uptimestr, 
-        "rawdata": httpsresp,
-        "ip": httpsresp.ip,
-        "hostname": httpsresp.hostname,
-        "country": httpsresp.country,
+        "rawdata": httpreq,
+        "ip": httpreq.ip,
+        "reqpath": reqpath,
+        "hostname": httpreq.hostname,
+        "country": httpreq.country,
         "region": process.env.AWS_REGION,
         "environment": process.env.AWS_EXECUTION_ENV,
         "memorysize": process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE
@@ -58,9 +63,6 @@ function ddbstore(httpsresp, uptimestr, currenttime, uptimeseconds) {
     if (err) {
         console.error("unable to add item. error json:", JSON.stringify(err));
     } else {
-
-        // log parameters
-        console.log(params);
         console.log("record added item to dynamodb");
     }
   });
@@ -69,10 +71,37 @@ function ddbstore(httpsresp, uptimestr, currenttime, uptimeseconds) {
 // main lambda handler
 exports.handler = async (event, context) => {
 
+    // get the requested url path
+    const reqpath = event.rawPath;
+
     // retrieve https content
-    var httpsresp = await getURL(url);
-    
-    // get current now timestamp
+    if (reqpath == "/cache") {
+
+        // if the value was not retrieved from cache
+        if (ipres == '') {
+            
+            // request the ip
+            var httpreq = await getURL(httpurl);
+            ipres = httpreq
+            console.log("! cold start - retrieved IP for "+ reqpath + " request");
+        
+        } else {
+
+            // if value was set, skip the ipinfo request
+            var httpreq = ipres
+            console.log("* cached - cached ip result for " + reqpath +" request");
+            console.log(httpreq)
+        }
+
+    } else {
+
+        // regular, non cached request to another ip path, make the ipinfo request
+        var httpreq = await getURL(httpurl);
+        ipres = httpreq;
+        console.log("% non cache request for " + reqpath);
+    }
+
+    // get current timestamp
     var now = new Date();
     var currenttime = now.getTime();
 
@@ -81,15 +110,19 @@ exports.handler = async (event, context) => {
     var uptime = prettyms(up * 1000, {compact: true});
 
     // write record to dynamodb
-    ddbstore(httpsresp, uptime, currenttime, up);
+    ddbstore(httpreq, uptime, currenttime, up, httpurl);
 
     // construct response with status code and uptime
     const response = {
         statusCode: statusCode,
-        body: httpsresp,
+        body: httpreq,
+        reqpath: reqpath,
         uptimestring: uptime,
         uptimeseconds: up 
     };
+
+    // print the response
+    console.log(response);
 
     // return JSON in indented format
     context.succeed(JSON.stringify(response, null, 2));
