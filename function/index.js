@@ -18,88 +18,78 @@ const ddbclient = new AWS.DynamoDB.DocumentClient();
 
 // set url, ddb table variables and default status code
 let ddbtable = process.env.ddbtable;
-let ipres = '';
-let httpreq;
-
-const httpurl = "https://ipinfo.io/json";
+let ipres = "";
 let statusCode = '200';
+const httpurl = "https://ipinfo.io/json";
 
 // retrieve the retrieved content and http status code, print error if needed
 const getURL = async httpurl => {
     try {
-        const response = await axios.get(httpurl);
-        statusCode = response.status;
-        return response.data;
+		httpreq = await axios.get(httpurl);
+		statusCode = 200;
+		return httpreq.data;
 
     } catch (error) {
-        statusCode = error.response.status;
-        return error;
+		httpreq = ipres;
+		statusCode = 500;
+		return error;
     }
 };
 
+const ddbget = async (x) => {
+	const data = await ddbclient
+	  	.get({
+			TableName: ddbtable,
+			Key: {
+			timest: x,
+			lambdauptimesec: x
+			}
+	  	})
+	  	.promise();
+
+	// stringify the json result and print it
+	z = JSON.stringify({ data })
+	console.log(z);
+	return z;
+
+  };
+
 // store the record in dynamodb
-function ddbstore(httpreq, uptimestr, currenttime, uptimeseconds, reqpath) {
+function ddbput(uptimestr, currenttime, uptimeseconds) {
 
-  // construct dynamodb item with lambda execution details
-  var params = {
-    TableName: ddbtable,
-    Item:{
-        "timest": currenttime,
-        "lambdauptimesec": uptimeseconds,
-        "lambdauptimestr": uptimestr, 
-        "rawdata": httpreq,
-        "ip": httpreq.ip,
-        "reqpath": reqpath,
-        "hostname": httpreq.hostname,
-        "country": httpreq.country,
-        "region": process.env.AWS_REGION,
-        "environment": process.env.AWS_EXECUTION_ENV,
-        "memorysize": process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE
-    }
-  }
+	// construct dynamodb item with lambda execution details
+	var params = {
+		TableName: ddbtable,
+		Item:{
+			"timest": {N: String(currenttime)},
+			"lambdauptimesec": {N: String(uptimeseconds)},
+			"lambdauptimestr": {N: uptimestr},
+			"rawdata": {S: String(ipres)},
+			"ip": {S: ipres.ip},
+			"hostname": {S: ipres.hostname},
+			"country": {S: ipres.country},
+			"region": {S: process.env.AWS_REGION},
+			"environment": {S: process.env.AWS_EXECUTION_ENV},
+			"memorysize": {S: process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE}
+		}
+	}
 
-  // put the item into dynamodb, print an error if needed
-  ddbclient.put(params, function(err, data) {
-    if (err) {
-        console.error("unable to add item. error json:", JSON.stringify(err));
-    } else {
-        console.log("record added item to dynamodb");
-    }
-  });
+  	// put the item into dynamodb, print an error if needed
+	ddbclient.putItem(params);
 };
 
 // main lambda handler
-exports.handler = async (event, context) => {
+const handler = async event => {
 
     // get the requested url path
-    const reqpath = event.rawPath;
+	const reqpath = event.rawPath;
+	const ddbid = Number(reqpath.split('/')[2]);
 
-    // retrieve https content
-    if (reqpath == "/cache") {
-
-        // if the value was not retrieved from cache
-        if (ipres == '') {
-            
-            // request the ip
-            var httpreq = await getURL(httpurl);
-            ipres = httpreq
-            console.log("! cold start - retrieved IP for "+ reqpath + " request");
-        
-        } else {
-
-            // if value was set, skip the ipinfo request
-            var httpreq = ipres
-            console.log("* cached - cached ip result for " + reqpath +" request");
-            console.log(httpreq)
-        }
-
-    } else {
-
-        // regular, non cached request to another ip path, make the ipinfo request
-        var httpreq = await getURL(httpurl);
-        ipres = httpreq;
-        console.log("% non cache request for " + reqpath);
-    }
+	// create status, ddb record and cache status var
+	var msg = "default get";
+	let cache;
+	let ddbrec;
+	let httpreq = "empty";
 
     // get current timestamp
     var now = new Date();
@@ -109,21 +99,71 @@ exports.handler = async (event, context) => {
     var up = Number(process.uptime().toFixed(0));
     var uptime = prettyms(up * 1000, {compact: true});
 
-    // write record to dynamodb
-    ddbstore(httpreq, uptime, currenttime, up, httpurl);
+    // if the ipres value was not retrieved from cache
+    if (ipres == '') {
+                    
+        // request the ip
+		httpreq = await getURL(httpurl);
+
+		// store ipinfo results in global variable
+		ipres = httpreq;
+		cache = "cold start";
+        console.log("! " + cache + " - retrieved IP for "+ reqpath + " request");
+
+    } else {
+
+		// if ipres value was set, skip the ipinfo request
+		cache = "warm start";
+		console.log("* " + cache + " - cached ip result for " + reqpath +" request");
+
+		// reuse the cached ipinfo results
+		httpreq = ipres;
+    }
+
+    if (reqpath.startsWith("/put")) {
+
+        // PUT request
+
+        // put a record into dynamodb
+        ddbput(uptime, currenttime, up);
+        msg = "put ddb " + uptime;
+
+    } else if (reqpath.startsWith("/get")) {
+        
+		// GET request
+
+		// if the ipres value was not retrieved from cache
+		var x = await ddbget(ddbid);
+		msg = "get " + uptime;
+		ddbrec = x;
+
+    } else if (reqpath.startsWith("/bootstrap")) {
+
+        // BOOTSTRAP request to create 10 dummy records
+
+        // create 10 ddb records with predictable timestamps (1 to 10)
+        for (i = 0; i < 10; i++) {            
+            ddbput(i, i, i);
+
+        msg = "create 10 bootstrap records" + " - " + uptime + " " + ipres.ip;
+
+        };
+    };
 
     // construct response with status code and uptime
     const response = {
-        statusCode: statusCode,
-        body: httpreq,
-        reqpath: reqpath,
-        uptimestring: uptime,
-        uptimeseconds: up 
+		statusCode: statusCode,
+		body: httpreq,
+		reqpath: reqpath,
+		uptimestring: uptime,
+		uptimeseconds: up,
+		msg: msg,
+		ddbrec: ddbrec,
+		cache: cache
     };
 
-    // print the response
-    console.log(response);
-
-    // return JSON in indented format
-    context.succeed(JSON.stringify(response, null, 2));
+	// return JSON in indented format
+	return JSON.stringify(response, null, 2)
 };
+
+module.exports = { handler };
