@@ -55,27 +55,29 @@ const ddbget = async (x) => {
   };
 
 // store the record in dynamodb
-function ddbput(uptimestr, currenttime, uptimeseconds) {
+const ddbput = async (uptimestr, currenttime, uptimeseconds) => {
 
 	// construct dynamodb item with lambda execution details
 	var params = {
 		TableName: ddbtable,
 		Item:{
-			"timest": {N: String(currenttime)},
-			"lambdauptimesec": {N: String(uptimeseconds)},
-			"lambdauptimestr": {N: uptimestr},
-			"rawdata": {S: String(ipres)},
-			"ip": {S: ipres.ip},
-			"hostname": {S: ipres.hostname},
-			"country": {S: ipres.country},
-			"region": {S: process.env.AWS_REGION},
-			"environment": {S: process.env.AWS_EXECUTION_ENV},
-			"memorysize": {S: process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE}
+			"timest": currenttime,
+			"lambdauptimesec": uptimeseconds,
+			"lambdauptimestr": uptimestr,
+			"rawdata": ipres,
+			"ip": ipres.ip,
+			"hostname": ipres.hostname,
+			"country": ipres.country,
+			"region": process.env.AWS_REGION,
+			"environment": process.env.AWS_EXECUTION_ENV,
+			"memorysize": process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE
 		}
 	}
 
-  	// put the item into dynamodb, print an error if needed
-	ddbclient.putItem(params);
+  	// put the item into dynamodb
+	await ddbclient.put(params).promise();
+
+	return "successful";
 };
 
 // main lambda handler
@@ -125,8 +127,8 @@ const handler = async event => {
         // PUT request
 
         // put a record into dynamodb
-        ddbput(uptime, currenttime, up);
-        msg = "put ddb " + uptime;
+        var x = await ddbput(uptime, currenttime, up);
+        msg = "put ddb " + x + " " + uptime;
 
     } else if (reqpath.startsWith("/get")) {
         
