@@ -26,24 +26,22 @@ const httpurl = "https://ipinfo.io/json";
 const getURL = async httpurl => {
     try {
 		httpreq = await axios.get(httpurl);
-		statusCode = 200;
+		statusCode = httpreq.statusCode;
 		return httpreq.data;
+
 
     } catch (error) {
 		httpreq = ipres;
-		statusCode = 500;
+		statusCode = httpreq.statusCode;
 		return error;
     }
 };
 
 const ddbget = async (ts) => {
+	let seg = AWSXRay.getSegment();
+	let ip;
 	let timest;
 	let uptime;
-
-	// if timestamp was not set, set to 1
-	if (ts = "") {
-		ts = "1";
-	}
 
 	// dynamodb query parameters
 	var params = {
@@ -71,16 +69,24 @@ const ddbget = async (ts) => {
 				ip = item.ip;
 
 				console.log("timest" + timest + " - lambdauptimesec " + uptime + " - ip " + ip);
+				return "timest " + timest + " - uptime " + uptime + " - " + ip;
+
 			});
 		}
 	}).promise();
 
+	seg.addAnnotation('clientip', ip);
+	seg.addAnnotation('urlpath', '/get');
+	seg.addAnnotation('timest', timest);
+
 	// return the timestamp and lambda uptime
-	return "timest " + timest + " - uptime " + uptime + " - " + ip;
+	return "successful get - timest " + timest + " - uptime " + uptime + " - " + ip;
+
 };
 
 // store the record in dynamodb
 const ddbput = async (uptimestr, currenttime, uptimeseconds) => {
+	let seg = AWSXRay.getSegment();
 
 	// construct dynamodb item with lambda execution details
 	var params = {
@@ -102,7 +108,11 @@ const ddbput = async (uptimestr, currenttime, uptimeseconds) => {
   	// put the item into dynamodb
 	await ddbclient.put(params).promise();
 
-	return "successful " + currenttime;
+	seg.addAnnotation('urlpath', '/put');
+	seg.addAnnotation('clientip', ipres.ip);
+	seg.addAnnotation('timest', currenttime);
+
+	return "successful put " + currenttime;
 };
 
 // main lambda handler
@@ -157,6 +167,7 @@ const handler = async event => {
 		var x = await ddbput(uptime, currenttime, up);
 		puturl = "https://" + apigwurl + "/get/" + currenttime + "/"
 		ddbrec = x;
+		console.log("PUT" + x);
 		msg = "put ddb " + x + " " + uptime;
 
 
@@ -167,6 +178,7 @@ const handler = async event => {
 		// if the ipres value was not retrieved from cache
 		var x = await ddbget(ddbts);
 		ddbrec = x;
+		console.log("GET" + x);
 		msg = "get " + uptime;
 
     } else if (reqpath.startsWith("/bootstrap")) {
