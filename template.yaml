@@ -22,12 +22,8 @@ Resources:
       Runtime: nodejs12.x
       CodeUri: function/.
       Description: Retrieve Lambda external IP address from ipinfo.io
-      MemorySize: 512
+      MemorySize: 256
       Timeout: 1
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - AWSLambdaReadOnlyAccess
-        - AWSXrayWriteOnlyAccess
       Tracing: Active
       Layers: 
         - !Ref XrayLayer
@@ -40,6 +36,9 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref DDBTable
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
       Environment:
         Variables:
           ddbtable: !Ref DDBTable
@@ -54,16 +53,9 @@ Resources:
       CompatibleRuntimes:
         - nodejs12.x
       LicenseInfo: MIT
-      RetentionPolicy: retain
+      RetentionPolicy: Delete
     Metadata:
       BuildMethod: nodejs12.x
-
-  DDBTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey:
-        Name: timest
-        Type: Number
 
   DDBTable:
     Type: 'AWS::DynamoDB::Table'

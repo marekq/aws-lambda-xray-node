@@ -36,23 +36,48 @@ const getURL = async httpurl => {
     }
 };
 
-const ddbget = async (x) => {
-	const data = await ddbclient
-	  	.get({
-			TableName: ddbtable,
-			Key: {
-			timest: x,
-			lambdauptimesec: x
-			}
-	  	})
-	  	.promise();
+const ddbget = async (ts) => {
+	let timest;
+	let uptime;
 
-	// stringify the json result and print it
-	z = JSON.stringify({ data })
-	console.log(z);
-	return z;
+	// if timestamp was not set, set to 1
+	if (ts = "") {
+		ts = "1";
+	}
 
-  };
+	// dynamodb query parameters
+	var params = {
+		TableName : ddbtable,
+		KeyConditionExpression: "#ts = :y",
+		ExpressionAttributeNames:{
+			"#ts": "timest"
+		},
+		ExpressionAttributeValues: {
+			":y": Number(ts)
+		}
+	};
+
+	// execute the dynamodb query and print results
+	await ddbclient.query(params, function(err, data) {
+		
+		if (err) {
+			console.error("Unable to query. Error:", JSON.stringify(err, null, 2));
+			return "error";
+
+		} else {
+			data.Items.forEach(function(item) {
+				timest = item.timest;
+				uptime = item.lambdauptimesec;
+				ip = item.ip;
+
+				console.log("timest" + timest + " - lambdauptimesec " + uptime + " - ip " + ip);
+			});
+		}
+	}).promise();
+
+	// return the timestamp and lambda uptime
+	return "timest " + timest + " - uptime " + uptime + " - " + ip;
+};
 
 // store the record in dynamodb
 const ddbput = async (uptimestr, currenttime, uptimeseconds) => {
@@ -77,21 +102,23 @@ const ddbput = async (uptimestr, currenttime, uptimeseconds) => {
   	// put the item into dynamodb
 	await ddbclient.put(params).promise();
 
-	return "successful";
+	return "successful " + currenttime;
 };
 
 // main lambda handler
 const handler = async event => {
 
-    // get the requested url path
+    // get the requested url path and dynamodb key value
 	const reqpath = event.rawPath;
-	const ddbid = Number(reqpath.split('/')[2]);
+	const apigwurl = event.requestContext.domainName;
+	const ddbts = reqpath.split('/')[2];
 
 	// create status, ddb record and cache status var
 	var msg = "default get";
 	let cache;
-	let ddbrec;
-	let httpreq = "empty";
+	let ddbrec = "empty";
+	let httpreq;
+	let puturl;
 
     // get current timestamp
     var now = new Date();
@@ -127,17 +154,20 @@ const handler = async event => {
         // PUT request
 
         // put a record into dynamodb
-        var x = await ddbput(uptime, currenttime, up);
-        msg = "put ddb " + x + " " + uptime;
+		var x = await ddbput(uptime, currenttime, up);
+		puturl = "https://" + apigwurl + "/get/" + currenttime + "/"
+		ddbrec = x;
+		msg = "put ddb " + x + " " + uptime;
+
 
     } else if (reqpath.startsWith("/get")) {
         
 		// GET request
 
 		// if the ipres value was not retrieved from cache
-		var x = await ddbget(ddbid);
-		msg = "get " + uptime;
+		var x = await ddbget(ddbts);
 		ddbrec = x;
+		msg = "get " + uptime;
 
     } else if (reqpath.startsWith("/bootstrap")) {
 
@@ -160,6 +190,7 @@ const handler = async event => {
 		uptimestring: uptime,
 		uptimeseconds: up,
 		msg: msg,
+		puturl: puturl,
 		ddbrec: ddbrec,
 		cache: cache
     };
