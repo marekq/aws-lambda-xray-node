@@ -33,7 +33,3 @@ You can query the API through the browser or CLI
 
 
 You can deploy the app to your AWS account using the AWS SAM CLI. Run 'sam build' and 'sam deploy -g' in the directory. After the deployment, the API Gateway URL you can query with curl or your browser is shown. 
-
-
-![alt text](./docs/browser.png)
-
