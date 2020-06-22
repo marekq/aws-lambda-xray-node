@@ -38,7 +38,7 @@ const getURL = async httpurl => {
 };
 
 const ddbget = async (ts) => {
-	let seg = AWSXRay.getSegment();
+	let seg = AWSXRay.getSegment().addNewSubsegment("ddbget");
 	let ip;
 	let timest;
 	let uptime;
@@ -78,6 +78,7 @@ const ddbget = async (ts) => {
 	seg.addAnnotation('clientip', ip);
 	seg.addAnnotation('urlpath', '/get');
 	seg.addAnnotation('timest', timest);
+	seg.close();
 
 	// return the timestamp and lambda uptime
 	return "successful get - timest " + timest + " - uptime " + uptime + " - " + ip;
@@ -86,7 +87,7 @@ const ddbget = async (ts) => {
 
 // store the record in dynamodb
 const ddbput = async (uptimestr, currenttime, uptimeseconds) => {
-	let seg = AWSXRay.getSegment();
+	let seg = AWSXRay.getSegment().addNewSubsegment("ddbput");
 
 	// construct dynamodb item with lambda execution details
 	var params = {
@@ -112,14 +113,17 @@ const ddbput = async (uptimestr, currenttime, uptimeseconds) => {
 	seg.addAnnotation('clientip', ipres.ip);
 	seg.addAnnotation('timest', currenttime);
 
+	seg.close();
 	return "successful put " + currenttime;
 };
 
 // main lambda handler
 const handler = async event => {
 
+	console.log(event);
+
     // get the requested url path and dynamodb key value
-	const reqpath = event.rawPath;
+	const reqpath = event.path;
 	const apigwurl = event.requestContext.domainName;
 	const ddbts = reqpath.split('/')[2];
 
@@ -167,7 +171,7 @@ const handler = async event => {
 		var x = await ddbput(uptime, currenttime, up);
 		puturl = "https://" + apigwurl + "/get/" + currenttime + "/"
 		ddbrec = x;
-		console.log("PUT" + x);
+		console.log("PUT " + x);
 		msg = "put ddb " + x + " " + uptime;
 
 
@@ -178,7 +182,7 @@ const handler = async event => {
 		// if the ipres value was not retrieved from cache
 		var x = await ddbget(ddbts);
 		ddbrec = x;
-		console.log("GET" + x);
+		console.log("GET " + x);
 		msg = "get " + uptime;
 
     } else if (reqpath.startsWith("/bootstrap")) {
