@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "devDependencies": {
-    "aws-sdk": "2.841.0"
+    "aws-sdk": "2.1354.0"
   },
   "dependencies": {
     "aws-xray-sdk-core": "3.2.0",
-    "axios": "^0.21.1",
+    "axios": "0.33.0",
     "pretty-ms": "^7.0.1"
   }
 }
